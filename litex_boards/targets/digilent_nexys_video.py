@@ -62,10 +62,10 @@ class _CRG(LiteXModule):
         # Video PLL.
         if with_video_pll:
             self.video_pll = video_pll = S7MMCM(speedgrade=-1)
-            video_pll.reset.eq(~rst_n | self.rst)
+            self.comb += video_pll.reset.eq(~rst_n | self.rst)
             video_pll.register_clkin(clk100, 100e6)
-            video_pll.create_clkout(self.cd_hdmi,   40e6)
-            video_pll.create_clkout(self.cd_hdmi5x, 5*40e6)
+            video_pll.create_clkout(self.cd_hdmi,   74.25e6)
+            video_pll.create_clkout(self.cd_hdmi5x, 5*74.25e6)
 
 # BaseSoC ------------------------------------------------------------------------------------------
 
@@ -80,7 +80,7 @@ class BaseSoC(SoCCore):
         with_usb               = False,
         vadj                   = "1.2V",
         with_video_terminal    = False,
-        with_video_framebuffer = False,
+        with_video_framebuffer = True,
         **kwargs):
         platform = digilent_nexys_video.Platform(toolchain=toolchain)
 
@@ -91,20 +91,36 @@ class BaseSoC(SoCCore):
         )
 
         # SoCCore ----------------------------------------------------------------------------------
-        SoCCore.__init__(self, platform, sys_clk_freq, ident="LiteX SoC on Nexys Video", **kwargs)
+        kwargs.pop("integrated_rom_size",  None)
+        kwargs.pop("integrated_sram_size", None)
+        kwargs.pop("uart_name",            None)
+        # SoCCore.__init__(self, platform, sys_clk_freq, ident="LiteX SoC on Nexys Video", uart_name = "serial", **kwargs)
+        SoCCore.__init__(
+            self,
+            platform,
+            sys_clk_freq,
+            ident="LiteX SoC on Nexys Video",
+            integrated_rom_size  = 0x20000,
+            integrated_sram_size = 0x02000,
+            uart_name            = "serial",
+            **kwargs
+        )
 
         # DDR3 SDRAM -------------------------------------------------------------------------------
-        if not self.integrated_main_ram_size:
-            self.ddrphy = s7ddrphy.A7DDRPHY(platform.request("ddram"),
+        # if not self.integrated_main_ram_size:
+        if True:
+            self.ddrphy = s7ddrphy.A7DDRPHY(
+                platform.request("ddram"),
                 memtype      = "DDR3",
                 nphases      = 4,
                 sys_clk_freq = sys_clk_freq)
-            self.add_sdram("sdram",
+            self.add_sdram(
+                "sdram",
                 phy           = self.ddrphy,
                 module        = MT41K256M16(sys_clk_freq, "1:4"),
                 l2_cache_size = kwargs.get("l2_size", 8192)
             )
-
+       
         # Ethernet ---------------------------------------------------------------------------------
         if with_ethernet:
             self.ethphy = LiteEthPHYRGMII(
@@ -149,12 +165,13 @@ class BaseSoC(SoCCore):
             self.add_sata(phy=self.sata_phy, mode="read+write")
 
         # Video ------------------------------------------------------------------------------------
-        if with_video_terminal or with_video_framebuffer:
+        # if with_video_terminal or with_video_framebuffer:
+        if True:
             self.videophy = VideoS7HDMIPHY(platform.request("hdmi_out"), clock_domain="hdmi")
             if with_video_terminal:
-                self.add_video_terminal(phy=self.videophy, timings="800x600@60Hz", clock_domain="hdmi")
+                self.add_video_terminal(phy=self.videophy, timings="1280x720@60Hz", clock_domain="hdmi")
             if with_video_framebuffer:
-                self.add_video_framebuffer(phy=self.videophy, timings="800x600@60Hz", clock_domain="hdmi")
+                self.add_video_framebuffer(phy=self.videophy, timings="1280x720@60Hz", clock_domain="hdmi")
 
         # USB-OHCI ---------------------------------------------------------------------------------
         if with_usb:
@@ -233,6 +250,7 @@ def main():
         soc.add_spi_sdcard()
     if args.with_sdcard:
         soc.add_sdcard()
+
     builder = Builder(soc, **parser.builder_argdict)
     if args.build:
         builder.build(**parser.toolchain_argdict)
